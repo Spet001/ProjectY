@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MDPro Web - Master Duel Three.js</title>
+    <link rel="stylesheet" href="/src/style.css" />
+    <script>
+      window.addEventListener('error', function(e) {
+        var b = document.createElement('div');
+        b.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#b00020;color:#fff;z-index:999999;padding:14px;font-family:monospace;font-size:13px;white-space:pre-wrap;box-shadow:0 4px 20px #000;';
+        b.textContent = 'GLOBAL ERROR: ' + e.message + '\nFile: ' + e.filename + ':' + e.lineno + ':' + e.colno + '\n' + (e.error ? e.error.stack : '');
+        document.body ? document.body.appendChild(b) : document.documentElement.appendChild(b);
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        var b = document.createElement('div');
+        b.style.cssText = 'position:fixed;top:40px;left:0;right:0;background:#d32f2f;color:#fff;z-index:999999;padding:14px;font-family:monospace;font-size:13px;white-space:pre-wrap;box-shadow:0 4px 20px #000;';
+        b.textContent = 'UNHANDLED REJECTION: ' + (e.reason && e.reason.stack ? e.reason.stack : e.reason);
+        document.body ? document.body.appendChild(b) : document.documentElement.appendChild(b);
+      });
+    </script>
+  </head>
+  <body>
+    <div id="app">
+      <!-- 1. Main Menu Screen -->
+      <div id="main-menu-container"></div>
+
+      <!-- 2. Deck Editor Modal Host -->
+      <div id="deck-editor-container"></div>
+
+      <!-- 3. 3D Duel Screen -->
+      <div id="duel-container" class="hidden">
+        <!-- 3D Canvas Viewport -->
+        <div id="board-container"></div>
+
+        <!-- 3D Card Direct Floating Action Popover -->
+        <div id="card-action-popover" class="card-action-popover hidden"></div>
+
+        <!-- Interactive Card Selection Modal (For MSG_SELECT_CARD, etc.) -->
+        <div id="card-select-modal" class="card-select-modal hidden">
+          <div class="modal-header">
+            <h3 id="card-select-title">Select Card(s)</h3>
+            <span id="card-select-count" class="deck-count-badge valid">0 Selected</span>
+          </div>
+          <div class="select-cards-container" id="card-select-list"></div>
+          <div class="custom-actions-bar" style="margin-top: 8px;">
+            <button class="btn btn-secondary" id="btn-cancel-card-select" style="display: none; margin-right: 10px;">Cancel</button>
+            <button class="btn btn-primary" id="btn-confirm-card-select">Confirm</button>
+          </div>
+        </div>
+
+        <!-- Master Duel HUD Overlay -->
+        <div class="ui-overlay">
+          <!-- Top Left: FPS & Card Inspector -->
+          <div class="hud-top-left">
+            <div class="fps-counter" id="duel-fps">60</div>
+            <aside class="card-inspector" id="card-inspector">
+              <div class="card-inspector-header">
+                <div class="card-img-wrap">
+                  <img id="inspect-img" src="/pics/89631139.jpg" alt="Card Art" />
+                </div>
+                <div class="card-header-info">
+                  <div class="card-title" id="inspect-name">Blue-Eyes White Dragon</div>
+                  <div class="card-meta-row" id="inspect-meta-row">
+                    <span class="meta-attr-tag" id="inspect-attr">LIGHT</span>
+                    <span class="meta-level-tag" id="inspect-level">★ 8</span>
+                  </div>
+                  <div class="card-stats-row" id="inspect-stats">
+                    <span class="stat-atk">ATK <strong id="inspect-atk">3000</strong></span>
+                    <span class="stat-def">DEF <strong id="inspect-def">2500</strong></span>
+                  </div>
+                </div>
+              </div>
+              <div class="card-type-bar" id="inspect-type-bar">【Dragon / Normal】</div>
+              <div class="card-desc" id="inspect-desc">This legendary dragon is a powerful engine of destruction.</div>
+            </aside>
+          </div>
+
+          <!-- Top Right: Opponent LP (Red/Trapezoid) -->
+          <div class="hud-top-right">
+            <div class="player-card p1">
+              <div class="player-info">
+                <span class="player-name" id="p1-name">Yami Yugi (AI)</span>
+                <div class="player-lp-row">
+                  <span class="lp-label">LP</span>
+                  <span class="player-lp" id="p1-lp">8000</span>
+                </div>
+                <div class="lp-gauge"><div class="lp-bar opponent" id="p1-lp-bar" style="width: 100%;"></div></div>
+              </div>
+              <div class="avatar-wrap p1-avatar">
+                <img id="p1-avatar-img" src="/icon/ProfileIcon1010001_L.png" alt="AI" class="player-avatar" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Center-Right: Authentic Phase Orb & Phase Buttons -->
+          <div class="phase-orb-container" id="phase-orb-container">
+            <div class="phase-orb" id="phase-orb">
+              <span class="orb-turn" id="turn-badge">Turn 1</span>
+              <span class="orb-phase" id="phase-name">Main 1</span>
+            </div>
+            <div class="phase-step-buttons" id="phase-step-buttons">
+              <button class="phase-action-btn battle hidden" id="btn-to-bp" title="Proceed to Battle Phase">
+                <img src="/texture/GUI_PhaseBP.png" alt="Battle" />
+                <span>Battle</span>
+              </button>
+              <button class="phase-action-btn main2 hidden" id="btn-to-m2" title="Proceed to Main Phase 2">
+                <img src="/texture/GUI_PhaseMP2.png" alt="Main 2" />
+                <span>Main 2</span>
+              </button>
+              <button class="phase-action-btn end hidden" id="btn-to-ep" title="End Turn">
+                <img src="/texture/GUI_PhaseEP.png" alt="End Turn" />
+                <span>End</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Bottom Left: Player LP (Blue/Trapezoid) -->
+          <div class="hud-bottom-left">
+            <div class="player-card p0">
+              <div class="avatar-wrap p0-avatar">
+                <img id="p0-avatar-img" src="/icon/ProfileIcon1010002_L.png" alt="Player" class="player-avatar" />
+              </div>
+              <div class="player-info">
+                <span class="player-name" id="p0-name">Seto Kaiba</span>
+                <div class="player-lp-row">
+                  <span class="lp-label">LP</span>
+                  <span class="player-lp" id="p0-lp">8000</span>
+                </div>
+                <div class="lp-gauge"><div class="lp-bar" id="p0-lp-bar" style="width: 100%;"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Right: Circular HUD Controls -->
+          <div class="hud-bottom-right">
+            <!-- Collapsible Live Duel Event Log -->
+            <div class="log-drawer hidden" id="log-drawer">
+              <div class="log-entry">=== DUEL COMMENCED ===</div>
+            </div>
+            <div class="hud-action-bar">
+              <button class="hud-circle-btn active" id="btn-qe-auto" title="Auto Chain">
+                <img src="/texture/GUI_T_DuelButtonQE_0_auto1.png" alt="Auto" />
+              </button>
+              <button class="hud-circle-btn" id="btn-toggle-log" title="Duel Log">
+                <img src="/texture/GUI_T_DuelButtonLog_Off_1.png" alt="Log" />
+              </button>
+              <button class="hud-circle-btn" id="btn-toggle-inspect" title="Card Info">
+                <img src="/texture/GUI_T_DuelButtonCardInfo_1.png" alt="Info" />
+              </button>
+              <button class="hud-circle-btn" id="btn-auto-play" title="Auto Play">
+                <img src="/texture/GUI_T_ReplayFF_1.png" alt="Auto Play" />
+              </button>
+              <button class="hud-circle-btn" id="btn-menu-return" title="Duel Menu">
+                <img src="/texture/GUI_T_DuelButtonSubmenu01.png" alt="Menu" />
+              </button>
+            </div>
+          </div>
+
+          <!-- Choice Prompt Modal (For Effect Yes/No, Battle Position, Zone placement, Chains) -->
+          <div class="prompt-modal hidden" id="prompt-modal">
+            <div class="prompt-title" id="prompt-title">Select Action</div>
+            <div class="prompt-options" id="prompt-options"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

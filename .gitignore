@@ -1,0 +1,6 @@
+node_modules/
+dist/
+# Dados copiados do MDPro3 / baixados de terceiros (não versionar)
+public/data/
+public/pics/
+.cache/
