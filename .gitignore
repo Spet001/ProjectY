@@ -4,3 +4,4 @@ dist/
 public/data/
 public/pics/
 .cache/
+*.meta
