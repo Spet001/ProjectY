@@ -10,12 +10,16 @@ import {
   YGOProMsgDamage,
   YGOProMsgRecover,
   YGOProMsgLpUpdate,
+  YGOProMsgPayLpCost,
   YGOProMsgNewTurn,
   YGOProMsgNewPhase,
   YGOProMsgWin,
   YGOProMsgSummoned,
   YGOProMsgSpSummoned,
   YGOProMsgChaining,
+  YGOProMsgChainSolving,
+  YGOProMsgChainSolved,
+  YGOProMsgChainEnd,
   YGOProMsgAttack,
   YGOProMsgBattle,
   YGOProMsgPosChange,
@@ -26,6 +30,36 @@ import { LOCATION, POS, DUEL_RULE_MR5, PHASE } from './constants';
 import type { Deck } from './ydk';
 import type { CardDatabase } from './card-database';
 import { SimpleBot } from './bot/simple-bot';
+
+/**
+ * Cryptographic / seeded Fisher-Yates shuffle for initial deck randomization.
+ */
+function shuffleCards(cards: number[], seed?: number): number[] {
+  const arr = [...cards];
+  let state = seed !== undefined ? seed >>> 0 : 0;
+  const nextRand = (): number => {
+    if (seed !== undefined) {
+      state = (state + 0x6d2b79f5) >>> 0;
+      let t = Math.imul(state ^ (state >>> 15), 1 | state);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    }
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+      const buf = new Uint32Array(1);
+      crypto.getRandomValues(buf);
+      return buf[0] / 4294967296;
+    }
+    return Math.random();
+  };
+
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(nextRand() * (i + 1));
+    const tmp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = tmp;
+  }
+  return arr;
+}
 
 export interface BoardCardSnapshot {
   player: number;
@@ -66,7 +100,10 @@ export type DuelEvent =
   | { type: 'summon'; code: number; cardName: string; player: number; location: number }
   | { type: 'spsummon'; code: number; cardName: string; player: number; location: number }
   | { type: 'set'; code: number; cardName: string; player: number }
-  | { type: 'chain'; code: number; cardName: string; player: number }
+  | { type: 'chain'; code: number; cardName: string; player: number; chainCount: number; desc: number }
+  | { type: 'chainSolving'; chainCount: number }
+  | { type: 'chainSolved'; chainCount: number }
+  | { type: 'chainEnd' }
   | { type: 'attack'; attacker: any; target?: any }
   | { type: 'battle'; attacker: any; defender?: any }
   | { type: 'posChange'; code: number; cardName: string; prevPos: number; currentPos: number }
@@ -95,6 +132,7 @@ export class DuelRunner {
   public isEnded = false;
   public winner: number | null = null;
   public currentPrompt?: YGOProMsgResponseBase;
+  private winEmitted = false;
 
   constructor(private options: DuelRunnerOptions) {
     this.cardDb = options.cardDb;
@@ -112,8 +150,16 @@ export class DuelRunner {
       this.bot1 = new SimpleBot(1, this.cardDb);
     }
 
-    const seed = options.seed ?? Math.floor(Math.random() * 1000000);
-    this.duel = options.wrapper.createDuel(seed);
+    if (options.seed !== undefined) {
+      this.duel = options.wrapper.createDuel(options.seed);
+    } else if (typeof options.wrapper.createDuelV2 === 'function' && typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      const seedSeq = new Uint32Array(4);
+      crypto.getRandomValues(seedSeq);
+      this.duel = options.wrapper.createDuelV2(Array.from(seedSeq));
+    } else {
+      const seed = Math.floor(Math.random() * 0xffffffff);
+      this.duel = options.wrapper.createDuel(seed);
+    }
     this.setupDuel();
   }
 
@@ -166,9 +212,9 @@ export class DuelRunner {
     this.duel.setPlayerInfo({ player: 0, lp, startHand, drawCount });
     this.duel.setPlayerInfo({ player: 1, lp, startHand, drawCount });
 
-    // Load Player 0 deck
+    // Load & shuffle Player 0 deck
     this.loadDeckCards(0, this.options.player0Deck);
-    // Load Player 1 deck
+    // Load & shuffle Player 1 deck
     this.loadDeckCards(1, this.options.player1Deck);
 
     // Start duel with Master Rule 2020
@@ -181,7 +227,11 @@ export class DuelRunner {
   }
 
   private loadDeckCards(player: number, deck: Deck) {
-    const mainCards = [...deck.main].reverse();
+    // Shuffle the Main Deck before inserting into OCGCore so every duel has a fresh opening hand
+    const seedForPlayer =
+      this.options.seed !== undefined ? this.options.seed + player * 9973 : undefined;
+    const mainCards = shuffleCards(deck.main, seedForPlayer);
+
     for (let seq = 0; seq < mainCards.length; seq++) {
       this.duel.newCard({
         code: mainCards[seq],
@@ -222,10 +272,32 @@ export class DuelRunner {
       this.handleGameMessage(msg);
     }
 
-    if (res.status === 2) {
+    if (res.status === 2 || this.isEnded || this.duel.ended) {
       this.isEnded = true;
       const snapshot = this.getBoardSnapshot();
       this.emit({ type: 'sync', snapshot });
+
+      if (!this.winEmitted) {
+        this.winEmitted = true;
+        const w =
+          this.winner !== null
+            ? this.winner
+            : this.lp[0] <= 0 && this.lp[1] <= 0
+            ? 2
+            : this.lp[1] <= 0
+            ? 0
+            : this.lp[0] <= 0
+            ? 1
+            : 0;
+        this.winner = w;
+        const winnerName = w === 2 ? 'Draw' : this.playerNames[w];
+        this.emit({
+          type: 'win',
+          winner: w,
+          reason: 1,
+          winnerName,
+        });
+      }
       return { awaitingHuman: false, messages };
     }
 
@@ -320,6 +392,43 @@ export class DuelRunner {
     return snapshots;
   }
 
+  public queryLocationCards(player: number, location: number): BoardCardSnapshot[] {
+    const list: BoardCardSnapshot[] = [];
+    const flag =
+      OcgcoreCommonConstants.QUERY_CODE |
+      OcgcoreCommonConstants.QUERY_POSITION |
+      OcgcoreCommonConstants.QUERY_TYPE |
+      OcgcoreCommonConstants.QUERY_LEVEL |
+      OcgcoreCommonConstants.QUERY_RANK |
+      OcgcoreCommonConstants.QUERY_ATTACK |
+      OcgcoreCommonConstants.QUERY_DEFENSE;
+    try {
+      const res = this.duel.queryFieldCard({
+        player,
+        location,
+        queryFlag: flag,
+      });
+      const cards = res.cards ?? [];
+      cards.forEach((cq, seq) => {
+        if (cq.empty || !cq.code) return;
+        list.push({
+          player,
+          location,
+          sequence: cq.sequence ?? seq,
+          code: cq.code,
+          position: cq.position ?? POS.FACEDOWN_ATTACK,
+          attack: cq.attack,
+          defense: cq.defense,
+          level: cq.level ?? cq.rank,
+          type: cq.type,
+        });
+      });
+    } catch {
+      // ignore
+    }
+    return list;
+  }
+
   /**
    * Submits a human player's response to the active prompt.
    */
@@ -366,13 +475,23 @@ export class DuelRunner {
           count: msg.count,
           cards: msg.cards,
         });
-        const names = msg.cards.map((c) => this.cardDb?.getName(c) ?? `#${c}`).join(', ');
+        // Do not leak opponent's drawn card names in the duel log!
+        const names =
+          msg.player === 0
+            ? msg.cards.map((c) => this.cardDb?.getName(c) ?? `#${c}`).join(', ')
+            : '';
         this.emit({
           type: 'log',
           text: `[Draw] ${this.playerNames[msg.player]} drew ${msg.count} card(s)${names ? `: ${names}` : ''}`,
         });
       } else if (msg instanceof YGOProMsgMove) {
-        const name = this.cardDb?.getName(msg.code) ?? `#${msg.code}`;
+        const isOpponentSecret =
+          msg.current.controller === 1 &&
+          (msg.current.location === LOCATION.HAND ||
+            ((msg.current.location & (LOCATION.MZONE | LOCATION.SZONE | LOCATION.REMOVED)) !== 0 &&
+              (msg.current.position & POS.FACEDOWN) !== 0));
+        const visibleCode = isOpponentSecret ? 0 : msg.code;
+        const name = visibleCode > 0 ? (this.cardDb?.getName(visibleCode) ?? `#${visibleCode}`) : 'a face-down card';
         const prevLoc = msg.previous.location;
         const currLoc = msg.current.location;
         const pName = this.playerNames[msg.current.controller];
@@ -380,12 +499,13 @@ export class DuelRunner {
         let actionDesc = '';
         if (currLoc === LOCATION.MZONE) {
           if (prevLoc === LOCATION.HAND || prevLoc === LOCATION.EXTRA || prevLoc === LOCATION.GRAVE) {
-            actionDesc = `${pName} played ${name} to Monster Zone (pos: 0x${msg.current.position.toString(16)})`;
+            actionDesc = `${pName} played ${name} to Monster Zone`;
           }
         } else if (currLoc === LOCATION.SZONE) {
           actionDesc = `${pName} placed ${name} in Spell/Trap Zone`;
         } else if (currLoc === LOCATION.GRAVE) {
-          actionDesc = `${name} sent to ${this.playerNames[msg.current.controller]}'s Graveyard`;
+          const gyName = this.cardDb?.getName(msg.code) ?? `#${msg.code}`;
+          actionDesc = `${gyName} sent to ${this.playerNames[msg.current.controller]}'s Graveyard`;
         } else if (currLoc === LOCATION.REMOVED) {
           actionDesc = `${name} was banished`;
         }
@@ -396,7 +516,7 @@ export class DuelRunner {
 
         this.emit({
           type: 'move',
-          code: msg.code,
+          code: visibleCode,
           cardName: name,
           from: msg.previous,
           to: msg.current,
@@ -408,15 +528,35 @@ export class DuelRunner {
         this.emit({ type: 'log', text: `[SpSummon] Special Summon resolved.` });
       } else if (msg instanceof YGOProMsgChaining) {
         const name = this.cardDb?.getName(msg.code) ?? `#${msg.code}`;
+        const chainCount = (msg as any).chainCount ?? (msg as any).ct ?? 1;
+        const desc = (msg as any).desc ?? 0;
         this.emit({
           type: 'chain',
           code: msg.code,
           cardName: name,
           player: msg.controller,
+          chainCount,
+          desc,
         });
         this.emit({
           type: 'log',
-          text: `[Chain] ${this.playerNames[msg.controller]} activates effect of ${name}!`,
+          text: `[Chain ${chainCount}] ${this.playerNames[msg.controller]} activates effect of ${name}!`,
+        });
+      } else if (msg instanceof YGOProMsgChainSolving) {
+        const chainCount = (msg as any).chainCount ?? (msg as any).ct ?? 1;
+        this.emit({ type: 'chainSolving', chainCount });
+        this.emit({
+          type: 'log',
+          text: `[Chain Resolving] Resolving Chain Link ${chainCount}...`,
+        });
+      } else if (msg instanceof YGOProMsgChainSolved) {
+        const chainCount = (msg as any).chainCount ?? (msg as any).ct ?? 1;
+        this.emit({ type: 'chainSolved', chainCount });
+      } else if (msg instanceof YGOProMsgChainEnd) {
+        this.emit({ type: 'chainEnd' });
+        this.emit({
+          type: 'log',
+          text: `[Chain End] Chain resolution finished.`,
         });
       } else if (msg instanceof YGOProMsgAttack) {
         this.emit({
@@ -452,15 +592,16 @@ export class DuelRunner {
           text: `[Position] ${name} changed battle position.`,
         });
       } else if (msg instanceof YGOProMsgLpUpdate) {
-        this.lp[msg.player] = msg.lp;
-        this.emit({ type: 'lp', player: msg.player, lp: msg.lp });
+        this.lp[msg.player] = Math.max(0, msg.lp);
+        this.emit({ type: 'lp', player: msg.player, lp: this.lp[msg.player] });
         this.emit({
           type: 'log',
-          text: `[LP Update] ${this.playerNames[msg.player]} LP: ${msg.lp}`,
+          text: `[LP Update] ${this.playerNames[msg.player]} LP: ${this.lp[msg.player]}`,
         });
       } else if (msg instanceof YGOProMsgDamage) {
-        this.lp[msg.player] -= msg.value;
+        this.lp[msg.player] = Math.max(0, this.lp[msg.player] - msg.value);
         this.emit({ type: 'damage', player: msg.player, amount: msg.value });
+        this.emit({ type: 'lp', player: msg.player, lp: this.lp[msg.player] });
         this.emit({
           type: 'log',
           text: `[Damage] ${this.playerNames[msg.player]} takes ${msg.value} damage! Remaining LP: ${this.lp[msg.player]}`,
@@ -468,13 +609,23 @@ export class DuelRunner {
       } else if (msg instanceof YGOProMsgRecover) {
         this.lp[msg.player] += msg.value;
         this.emit({ type: 'recover', player: msg.player, amount: msg.value });
+        this.emit({ type: 'lp', player: msg.player, lp: this.lp[msg.player] });
         this.emit({
           type: 'log',
           text: `[Recover] ${this.playerNames[msg.player]} gains ${msg.value} LP! Remaining LP: ${this.lp[msg.player]}`,
         });
+      } else if (msg instanceof YGOProMsgPayLpCost) {
+        this.lp[msg.player] = Math.max(0, this.lp[msg.player] - msg.cost);
+        this.emit({ type: 'damage', player: msg.player, amount: msg.cost });
+        this.emit({ type: 'lp', player: msg.player, lp: this.lp[msg.player] });
+        this.emit({
+          type: 'log',
+          text: `[LP Cost] ${this.playerNames[msg.player]} pays ${msg.cost} LP! Remaining LP: ${this.lp[msg.player]}`,
+        });
       } else if (msg instanceof YGOProMsgWin) {
         this.isEnded = true;
         this.winner = msg.player;
+        this.winEmitted = true;
         const winnerName = msg.player === 2 ? 'Draw' : this.playerNames[msg.player];
         this.emit({
           type: 'win',

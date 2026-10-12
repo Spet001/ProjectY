@@ -1,6 +1,6 @@
-import { createOcgcoreWrapper, ZipScriptReader, SqljsCardReader } from 'koishipro-core.js';
+import { createOcgcoreWrapper, SqljsCardReader } from 'koishipro-core.js';
 import initSqlJs from 'sql.js';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
@@ -24,26 +24,35 @@ async function runHeadlessDuel() {
   console.log('==================================================\n');
 
   // 1. Initialize WASM ocgcore
-  const wasmPath = resolve('node_modules/koishipro-core.js/dist/vendor/wasm_esm/libocgcore.wasm');
+  const wasmPath = resolve('public/wasm/libocgcore.wasm');
   const wasmBinary = readFileSync(wasmPath);
   const wrapper = await createOcgcoreWrapper({ wasmBinary });
 
-  // 2. Load Lua scripts
-  const zipBytes = readFileSync(resolve('public/data/script.zip'));
-  wrapper.setScriptReader(await ZipScriptReader(zipBytes), true);
+  // 2. Load Lua scripts directly from workspace data/script
+  wrapper.setScriptReader((scriptName: string) => {
+    const clean = scriptName.replace(/^\.\//, '');
+    const candidates = [
+      resolve('data', clean),
+      resolve('data/script', clean.replace(/^script\//, '')),
+    ];
+    for (const c of candidates) {
+      if (existsSync(c)) return new Uint8Array(readFileSync(c));
+    }
+    return null;
+  }, true);
 
-  // 3. Load SQLite card database
+  // 3. Load SQLite card database from workspace data/locales/en-US
   const SQL = await initSqlJs();
-  const cdbBytes = readFileSync(resolve('public/data/locales/en-US/cards.cdb'));
+  const cdbBytes = readFileSync(resolve('data/locales/en-US/cards.cdb'));
   const db = new SQL.Database(cdbBytes);
   wrapper.setCardReader(SqljsCardReader(db), true);
 
-  const stringsContent = readFileSync(resolve('public/data/locales/en-US/strings.conf'), 'utf-8');
+  const stringsContent = readFileSync(resolve('data/locales/en-US/strings.conf'), 'utf-8');
   const cardDb = new CardDatabase(db, stringsContent);
 
-  // 4. Load Decks
-  const deck1Text = readFileSync(resolve('public/data/decks/AI_BlueEyes.ydk'), 'utf-8');
-  const deck2Text = readFileSync(resolve('public/data/decks/AI_DarkMagician.ydk'), 'utf-8');
+  // 4. Load Decks from workspace data/Windbot/Decks
+  const deck1Text = readFileSync(resolve('data/Windbot/Decks/AI_BlueEyes.ydk'), 'utf-8');
+  const deck2Text = readFileSync(resolve('data/Windbot/Decks/AI_DarkMagician.ydk'), 'utf-8');
 
   const deck1 = parseYdk(deck1Text, 'Blue-Eyes Deck');
   const deck2 = parseYdk(deck2Text, 'Dark Magician Deck');

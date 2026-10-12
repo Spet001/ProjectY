@@ -9,7 +9,6 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "setup:data": "node scripts/setup-data.mjs",
     "test:headless": "tsx tools/headless-duel.ts"
   },
   "dependencies": {

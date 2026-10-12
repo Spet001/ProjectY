@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { customAssets } from '../ui/custom-assets';
 
 const fieldCache = new Map<string, THREE.CanvasTexture>();
 const imgCache = new Map<string, HTMLImageElement>();
@@ -15,12 +16,12 @@ function getFieldImage(src: string): HTMLImageElement {
 }
 
 /**
- * Creates authentic duel field mat texture inspired by Yu-Gi-Oh! Master Duel.
- * Uses real Master Duel Jungle textures (Mat_002) for default / 1090001 field,
- * or blends the chosen field icon.
+ * Creates the Master Duel stone & holographic energy arena mat texture (Screenshot 3).
+ * Supports built-in FieldIcons as well as user-uploaded custom field art ("custom_field").
  */
 export function getFieldMatTexture(isPlayer0: boolean, fieldIcon = 'FieldIcon1090001.png'): THREE.CanvasTexture {
-  const cacheKey = `${isPlayer0 ? 'p0' : 'p1'}_${fieldIcon}`;
+  const customUrl = fieldIcon === 'custom_field' ? customAssets.getUrl('custom_field') : undefined;
+  const cacheKey = `${isPlayer0 ? 'p0' : 'p1'}_${fieldIcon}_${customUrl ? customUrl.slice(-24) : ''}`;
   const existing = fieldCache.get(cacheKey);
   if (existing) return existing;
 
@@ -35,117 +36,81 @@ export function getFieldMatTexture(isPlayer0: boolean, fieldIcon = 'FieldIcon109
   texture.wrapT = THREE.ClampToEdgeWrapping;
   fieldCache.set(cacheKey, texture);
 
-  const isJungle = !fieldIcon || fieldIcon.includes('1090001');
-
-  // Jungle asset images
-  const terrainImg = isJungle ? getFieldImage('/texture/Mat_002_02_BaseColor_near.png') : null;
-  const stoneTileImg = isJungle ? getFieldImage('/texture/Mat_002_01_BaseColor_near.png') : null;
-  const customFieldImg = !isJungle ? getFieldImage(`/icon/${fieldIcon}`) : null;
+  const imgSrc =
+    fieldIcon === 'custom_field' && customUrl
+      ? customUrl
+      : `/icon/${fieldIcon || 'FieldIcon1090001.png'}`;
+  const customFieldImg = getFieldImage(imgSrc);
 
   const redraw = () => {
-    const primary = isPlayer0 ? '#00e5ff' : '#ff334b';
-
-    if (isJungle) {
-      // 1. Jungle Mossy Ground Base
-      if (terrainImg && terrainImg.complete && terrainImg.naturalWidth > 0) {
-        // Sample jungle dirt/grass terrain
-        ctx.drawImage(terrainImg, 760, 580, 500, 440, 0, 0, 1024, 512);
-      } else {
-        // Lush jungle moss green & dark stone gradient
-        const mossGrad = ctx.createLinearGradient(0, 0, 1024, 512);
-        mossGrad.addColorStop(0, isPlayer0 ? '#101c14' : '#1e1414');
-        mossGrad.addColorStop(0.5, isPlayer0 ? '#14281c' : '#221418');
-        mossGrad.addColorStop(1, isPlayer0 ? '#0c1610' : '#160e10');
-        ctx.fillStyle = mossGrad;
-        ctx.fillRect(0, 0, 1024, 512);
-      }
-
-      // Dark jungle vignette overlay
-      const vigGrad = ctx.createRadialGradient(512, 256, 120, 512, 256, 540);
-      vigGrad.addColorStop(0, 'rgba(0, 0, 0, 0.1)');
-      vigGrad.addColorStop(1, 'rgba(2, 6, 4, 0.7)');
-      ctx.fillStyle = vigGrad;
-      ctx.fillRect(0, 0, 1024, 512);
-
-      // 2. Stamp Ancient Octagon Stone Tiles at 5 zone columns
-      const colsX = [180, 346, 512, 678, 844];
-      const rowY = isPlayer0 ? 200 : 312;
-
-      for (const cx of colsX) {
-        if (stoneTileImg && stoneTileImg.complete && stoneTileImg.naturalWidth > 0) {
-          ctx.save();
-          ctx.beginPath();
-          drawOctagon(ctx, cx, rowY, 56);
-          ctx.clip();
-          ctx.drawImage(stoneTileImg, 220, 220, 360, 340, cx - 60, rowY - 60, 120, 120);
-          ctx.restore();
-        }
-
-        // Stone border bevel
-        ctx.strokeStyle = 'rgba(120, 150, 110, 0.35)';
-        ctx.lineWidth = 2.5;
-        drawOctagon(ctx, cx, rowY, 56);
-        ctx.stroke();
-      }
-
-      // Stone runes & border
-      ctx.strokeStyle = isPlayer0 ? 'rgba(70, 190, 160, 0.45)' : 'rgba(200, 80, 80, 0.45)';
-      ctx.lineWidth = 3;
-      drawChamferedRect(ctx, 16, 16, 992, 480, 28);
-      ctx.stroke();
+    // 1. Base carved stone slab background (Screenshot 3 aesthetic)
+    const stoneGrad = ctx.createLinearGradient(0, 0, 0, 512);
+    if (isPlayer0) {
+      stoneGrad.addColorStop(0, '#3a4659');
+      stoneGrad.addColorStop(0.55, '#2e3848');
+      stoneGrad.addColorStop(1, '#182436');
     } else {
-      // Custom / Non-Jungle field: draw atmospheric tech arena with field backdrop
-      const bgGrad = ctx.createLinearGradient(0, 0, 0, 512);
-      bgGrad.addColorStop(0, isPlayer0 ? '#0a1220' : '#1a0d14');
-      bgGrad.addColorStop(1, isPlayer0 ? '#050811' : '#0e060a');
-      ctx.fillStyle = bgGrad;
-      ctx.fillRect(0, 0, 1024, 512);
+      stoneGrad.addColorStop(0, '#1e2433');
+      stoneGrad.addColorStop(0.45, '#2d3546');
+      stoneGrad.addColorStop(1, '#394457');
+    }
+    ctx.fillStyle = stoneGrad;
+    ctx.fillRect(0, 0, 1024, 512);
 
-      if (customFieldImg && customFieldImg.complete && customFieldImg.naturalWidth > 0) {
-        ctx.save();
-        ctx.globalAlpha = 0.35;
-        ctx.drawImage(customFieldImg, 256, 0, 512, 512);
-        ctx.restore();
-      }
+    // 2. Blend chosen Field Art or Custom Uploaded Field Art
+    if (customFieldImg && customFieldImg.complete && customFieldImg.naturalWidth > 0) {
+      ctx.save();
+      ctx.globalAlpha = fieldIcon === 'custom_field' ? 0.65 : 0.32;
+      ctx.drawImage(customFieldImg, 0, 0, 1024, 512);
+      ctx.restore();
+    }
 
-      ctx.strokeStyle = isPlayer0 ? 'rgba(0, 180, 255, 0.05)' : 'rgba(255, 60, 90, 0.05)';
-      ctx.lineWidth = 1;
-      const hexSize = 24;
-      const hexH = hexSize * Math.sqrt(3);
-      for (let y = 0; y < 512 + hexH; y += hexH) {
-        for (let x = 0; x < 1024 + hexSize * 3; x += hexSize * 3) {
-          drawHex(ctx, x, y, hexSize);
-          drawHex(ctx, x + hexSize * 1.5, y + hexH / 2, hexSize);
-        }
-      }
-
-      ctx.strokeStyle = primary;
-      ctx.lineWidth = 4;
-      drawChamferedRect(ctx, 18, 18, 988, 476, 32);
+    // 3. Subtle stone cracks / weathered marble grain
+    ctx.strokeStyle = 'rgba(15, 20, 30, 0.35)';
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < 28; i++) {
+      const sx = (i * 137) % 1024;
+      const sy = (i * 89) % 512;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + ((i % 3) - 1) * 45, sy + 28);
+      ctx.lineTo(sx + ((i % 5) - 2) * 30, sy + 55);
       ctx.stroke();
     }
+
+    // 4. Glowing Cyan Holographic Energy Bars on Player 0 Backrow (Screenshot 3)
+    if (isPlayer0) {
+      const holoGrad = ctx.createLinearGradient(0, 290, 0, 495);
+      holoGrad.addColorStop(0, 'rgba(0, 195, 255, 0.0)');
+      holoGrad.addColorStop(0.35, 'rgba(0, 195, 255, 0.22)');
+      holoGrad.addColorStop(0.8, 'rgba(0, 225, 255, 0.38)');
+      holoGrad.addColorStop(1, 'rgba(0, 160, 255, 0.12)');
+      ctx.fillStyle = holoGrad;
+      ctx.fillRect(140, 290, 744, 200);
+
+      // Vertical digital hologram bars
+      ctx.fillStyle = 'rgba(60, 220, 255, 0.22)';
+      for (let x = 152; x < 875; x += 14) {
+        const barH = 70 + ((x * 19) % 95);
+        ctx.fillRect(x, 480 - barH, 5, barH);
+      }
+    }
+
+    // 5. Outer Arena Stone Bevel & Neon Conduit Border
+    ctx.strokeStyle = isPlayer0 ? 'rgba(0, 225, 255, 0.65)' : 'rgba(160, 175, 205, 0.35)';
+    ctx.lineWidth = 4;
+    drawChamferedRect(ctx, 14, 14, 996, 484, 26);
+    ctx.stroke();
 
     texture.needsUpdate = true;
   };
 
-  if (terrainImg && !terrainImg.complete) terrainImg.addEventListener('load', redraw, { once: true });
-  if (stoneTileImg && !stoneTileImg.complete) stoneTileImg.addEventListener('load', redraw, { once: true });
-  if (customFieldImg && !customFieldImg.complete) customFieldImg.addEventListener('load', redraw, { once: true });
+  if (customFieldImg && !customFieldImg.complete) {
+    customFieldImg.addEventListener('load', redraw, { once: true });
+  }
 
   redraw();
   return texture;
-}
-
-function drawOctagon(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
-  ctx.beginPath();
-  for (let i = 0; i < 8; i++) {
-    const angle = (i * Math.PI) / 4 + Math.PI / 8;
-    const x = cx + r * Math.cos(angle);
-    const y = cy + r * Math.sin(angle);
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.closePath();
 }
 
 function drawChamferedRect(
@@ -166,17 +131,4 @@ function drawChamferedRect(
   ctx.lineTo(x, y + h - c);
   ctx.lineTo(x, y + c);
   ctx.closePath();
-}
-
-function drawHex(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
-  ctx.beginPath();
-  for (let i = 0; i < 6; i++) {
-    const angle = (i * Math.PI) / 3;
-    const hx = x + r * Math.cos(angle);
-    const hy = y + r * Math.sin(angle);
-    if (i === 0) ctx.moveTo(hx, hy);
-    else ctx.lineTo(hx, hy);
-  }
-  ctx.closePath();
-  ctx.stroke();
 }

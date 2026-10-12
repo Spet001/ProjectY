@@ -4,6 +4,9 @@ export type ZoneType = 'monster' | 'spell' | 'emz' | 'deck' | 'grave' | 'extra' 
 
 const textureCache = new Map<string, THREE.CanvasTexture>();
 
+/**
+ * Creates carved stone zone tile textures matching Screenshot 3 of Yu-Gi-Oh! Master Duel.
+ */
 export function createZoneTexture(type: ZoneType, isPlayer0: boolean): THREE.CanvasTexture {
   const key = `${type}_${isPlayer0 ? 'p0' : 'p1'}`;
   if (textureCache.has(key)) {
@@ -15,137 +18,90 @@ export function createZoneTexture(type: ZoneType, isPlayer0: boolean): THREE.Can
   canvas.height = 368;
   const ctx = canvas.getContext('2d')!;
 
-  const primaryColor = isPlayer0 ? '#00e5ff' : '#ff334b';
-  const secondaryColor = isPlayer0 ? '#0077cc' : '#aa1122';
-  const glowColor = isPlayer0 ? 'rgba(0, 229, 255, 0.35)' : 'rgba(255, 51, 75, 0.35)';
+  const isPlayerSpell = isPlayer0 && type === 'spell';
 
-  if (type === 'emz') {
-    // Extra Monster Zone: Golden Emerald
-    ctx.fillStyle = '#061a14';
-    ctx.fillRect(0, 0, 256, 368);
-    drawZonePlate(ctx, '#00ffaa', '#008855', 'rgba(0, 255, 170, 0.4)', 'EMZ');
+  // 1. Stone slab base gradient
+  const grad = ctx.createLinearGradient(0, 0, 256, 368);
+  if (isPlayerSpell) {
+    grad.addColorStop(0, '#4d6584');
+    grad.addColorStop(0.5, '#3b5272');
+    grad.addColorStop(1, '#2a4162');
+  } else if (type === 'emz') {
+    grad.addColorStop(0, '#5a667c');
+    grad.addColorStop(0.5, '#485368');
+    grad.addColorStop(1, '#394356');
   } else {
-    // Dark glass base
-    ctx.fillStyle = isPlayer0 ? '#081020' : '#1a090d';
-    ctx.fillRect(0, 0, 256, 368);
-    drawZonePlate(ctx, primaryColor, secondaryColor, glowColor, type.toUpperCase());
+    grad.addColorStop(0, '#525d72');
+    grad.addColorStop(0.5, '#414b5e');
+    grad.addColorStop(1, '#313949');
+  }
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 256, 368);
+
+  // 2. Outer chiseled stone bevel
+  ctx.strokeStyle = 'rgba(20, 26, 36, 0.85)';
+  ctx.lineWidth = 10;
+  ctx.strokeRect(5, 5, 246, 358);
+
+  // Top-left stone highlight bevel
+  ctx.strokeStyle = 'rgba(185, 205, 235, 0.32)';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(10, 358);
+  ctx.lineTo(10, 10);
+  ctx.lineTo(246, 10);
+  ctx.stroke();
+
+  // 3. Inner carved recessed square frame (exact Master Duel stone tile pattern)
+  ctx.strokeStyle = 'rgba(22, 28, 40, 0.65)';
+  ctx.lineWidth = 5;
+  ctx.strokeRect(36, 52, 184, 264);
+
+  ctx.strokeStyle = 'rgba(175, 195, 225, 0.22)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(40, 56, 176, 256);
+
+  // Corner stone seam lines
+  ctx.strokeStyle = 'rgba(20, 26, 38, 0.55)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(10, 10);
+  ctx.lineTo(36, 52);
+  ctx.moveTo(246, 10);
+  ctx.lineTo(220, 52);
+  ctx.moveTo(10, 358);
+  ctx.lineTo(36, 316);
+  ctx.moveTo(246, 358);
+  ctx.lineTo(220, 316);
+  ctx.stroke();
+
+  // 4. Subtle weathered stone cracks
+  ctx.strokeStyle = 'rgba(18, 22, 32, 0.35)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(65, 95);
+  ctx.lineTo(95, 130);
+  ctx.lineTo(82, 165);
+  ctx.moveTo(185, 210);
+  ctx.lineTo(155, 245);
+  ctx.stroke();
+
+  // 5. Holographic cyan glow overlay on Player 0 Spell/Trap zones (Screenshot 3)
+  if (isPlayerSpell) {
+    const holo = ctx.createLinearGradient(0, 0, 0, 368);
+    holo.addColorStop(0, 'rgba(0, 195, 255, 0.08)');
+    holo.addColorStop(0.6, 'rgba(0, 220, 255, 0.22)');
+    holo.addColorStop(1, 'rgba(0, 180, 255, 0.35)');
+    ctx.fillStyle = holo;
+    ctx.fillRect(10, 10, 236, 348);
+
+    ctx.strokeStyle = 'rgba(0, 225, 255, 0.55)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(12, 12, 232, 344);
   }
 
   const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
   textureCache.set(key, texture);
   return texture;
-}
-
-function drawZonePlate(
-  ctx: CanvasRenderingContext2D,
-  border: string,
-  accent: string,
-  glow: string,
-  label: string
-) {
-  // Beveled outer metallic border
-  ctx.strokeStyle = border;
-  ctx.lineWidth = 6;
-  ctx.fillStyle = glow;
-
-  const m = 12;
-  const w = 256 - m * 2;
-  const h = 368 - m * 2;
-  const c = 18; // corner cut
-
-  ctx.beginPath();
-  ctx.moveTo(m + c, m);
-  ctx.lineTo(m + w - c, m);
-  ctx.lineTo(m + w, m + c);
-  ctx.lineTo(m + w, m + h - c);
-  ctx.lineTo(m + w - c, m + h);
-  ctx.lineTo(m + c, m + h);
-  ctx.lineTo(m, m + h - c);
-  ctx.lineTo(m, m + c);
-  ctx.closePath();
-
-  ctx.fill();
-  ctx.stroke();
-
-  // Inner subtle framing
-  ctx.strokeStyle = accent;
-  ctx.lineWidth = 2;
-  ctx.strokeRect(m + 16, m + 16, w - 32, h - 32);
-
-  // Center Emblem based on zone type
-  const cx = 128;
-  const cy = 184;
-
-  ctx.save();
-  ctx.translate(cx, cy);
-
-  if (label === 'MONSTER') {
-    // Crossed Swords / Blade Symbol
-    ctx.strokeStyle = border;
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(-35, -45);
-    ctx.lineTo(35, 45);
-    ctx.moveTo(35, -45);
-    ctx.lineTo(-35, 45);
-    ctx.stroke();
-
-    ctx.fillStyle = border;
-    ctx.beginPath();
-    ctx.arc(0, 0, 10, 0, Math.PI * 2);
-    ctx.fill();
-  } else if (label === 'SPELL') {
-    // Magic Runes / Star Sigil
-    ctx.strokeStyle = border;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    for (let i = 0; i < 6; i++) {
-      const angle = (i * Math.PI) / 3;
-      const x = Math.cos(angle) * 36;
-      const y = Math.sin(angle) * 36;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.closePath();
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.arc(0, 0, 16, 0, Math.PI * 2);
-    ctx.stroke();
-  } else if (label === 'EMZ') {
-    // Dual Arrow Link/Link Markers Emblem
-    ctx.strokeStyle = border;
-    ctx.lineWidth = 4;
-    ctx.strokeRect(-28, -28, 56, 56);
-    ctx.beginPath();
-    ctx.arc(0, 0, 18, 0, Math.PI * 2);
-    ctx.stroke();
-  } else if (label === 'GRAVE') {
-    // Crypt/Tombstone Emblem
-    ctx.strokeStyle = border;
-    ctx.lineWidth = 3;
-    ctx.strokeRect(-24, -20, 48, 40);
-    ctx.beginPath();
-    ctx.moveTo(-16, 0);
-    ctx.lineTo(16, 0);
-    ctx.moveTo(0, -12);
-    ctx.lineTo(0, 12);
-    ctx.stroke();
-  } else {
-    // Standard Deck/Extra/Field Card Back Silhouette
-    ctx.strokeStyle = border;
-    ctx.lineWidth = 3;
-    ctx.strokeRect(-22, -32, 44, 64);
-  }
-
-  ctx.restore();
-
-  // Zone Label Text at bottom
-  ctx.font = 'bold 16px sans-serif';
-  ctx.fillStyle = border;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.shadowColor = border;
-  ctx.shadowBlur = 10;
-  ctx.fillText(label, cx, 368 - m - 24);
 }

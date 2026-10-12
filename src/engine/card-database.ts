@@ -131,12 +131,28 @@ export class CardDatabase {
       type: Number(row[4]),
       atk: Number(row[5]),
       def: Number(row[6]),
-      level: Number(row[7]),
+      level: Number(row[7]) & 0xff,
       race: Number(row[8]),
       attribute: Number(row[9]),
       category: Number(row[10]),
       name: String(row[11] ?? ''),
       desc: String(row[12] ?? ''),
+      str1: row[13] ? String(row[13]) : undefined,
+      str2: row[14] ? String(row[14]) : undefined,
+      str3: row[15] ? String(row[15]) : undefined,
+      str4: row[16] ? String(row[16]) : undefined,
+      str5: row[17] ? String(row[17]) : undefined,
+      str6: row[18] ? String(row[18]) : undefined,
+      str7: row[19] ? String(row[19]) : undefined,
+      str8: row[20] ? String(row[20]) : undefined,
+      str9: row[21] ? String(row[21]) : undefined,
+      str10: row[22] ? String(row[22]) : undefined,
+      str11: row[23] ? String(row[23]) : undefined,
+      str12: row[24] ? String(row[24]) : undefined,
+      str13: row[25] ? String(row[25]) : undefined,
+      str14: row[26] ? String(row[26]) : undefined,
+      str15: row[27] ? String(row[27]) : undefined,
+      str16: row[28] ? String(row[28]) : undefined,
     };
 
     this.cache.set(id, card);
@@ -177,17 +193,82 @@ export class CardDatabase {
     return ATTRIBUTE_NAMES[attr] ?? 'Unknown';
   }
 
-  searchCards(keyword: string, limit = 60): CardData[] {
+  searchCards(
+    keyword: string,
+    limit = 60,
+    filters?: {
+      category?: string;
+      attribute?: number;
+      race?: number;
+      level?: number;
+      sort?: 'atk' | 'def' | 'level' | 'name';
+    }
+  ): CardData[] {
     const k = `%${keyword}%`;
+    const whereClauses: string[] = [
+      '(t.name LIKE ? OR t.desc LIKE ? OR CAST(d.id AS TEXT) LIKE ?)',
+      `(d.type & ${TYPE.TOKEN}) = 0`,
+    ];
+    const params: any[] = [k, k, k];
+
+    if (filters?.attribute) {
+      whereClauses.push('d.attribute = ?');
+      params.push(filters.attribute);
+    }
+    if (filters?.race) {
+      whereClauses.push('d.race = ?');
+      params.push(filters.race);
+    }
+    if (filters?.level !== undefined && filters.level >= 0) {
+      whereClauses.push('(d.level & 255) = ?');
+      params.push(filters.level);
+    }
+    if (filters?.category && filters.category !== 'all') {
+      const cat = filters.category;
+      if (cat === 'monster') {
+        whereClauses.push(`(d.type & ${TYPE.MONSTER}) != 0 AND (d.type & ${TYPE.FUSION | TYPE.SYNCHRO | TYPE.XYZ | TYPE.LINK}) = 0`);
+      } else if (cat === 'normal') {
+        whereClauses.push(`(d.type & ${TYPE.NORMAL}) != 0`);
+      } else if (cat === 'effect') {
+        whereClauses.push(`(d.type & ${TYPE.EFFECT}) != 0 AND (d.type & ${TYPE.FUSION | TYPE.SYNCHRO | TYPE.XYZ | TYPE.LINK}) = 0`);
+      } else if (cat === 'fusion') {
+        whereClauses.push(`(d.type & ${TYPE.FUSION}) != 0`);
+      } else if (cat === 'synchro') {
+        whereClauses.push(`(d.type & ${TYPE.SYNCHRO}) != 0`);
+      } else if (cat === 'xyz') {
+        whereClauses.push(`(d.type & ${TYPE.XYZ}) != 0`);
+      } else if (cat === 'link') {
+        whereClauses.push(`(d.type & ${TYPE.LINK}) != 0`);
+      } else if (cat === 'pendulum') {
+        whereClauses.push(`(d.type & ${TYPE.PENDULUM}) != 0`);
+      } else if (cat === 'ritual') {
+        whereClauses.push(`(d.type & ${TYPE.RITUAL}) != 0 AND (d.type & ${TYPE.MONSTER}) != 0`);
+      } else if (cat === 'spell') {
+        whereClauses.push(`(d.type & ${TYPE.SPELL}) != 0`);
+      } else if (cat === 'trap') {
+        whereClauses.push(`(d.type & ${TYPE.TRAP}) != 0`);
+      } else if (cat === 'extra') {
+        whereClauses.push(`(d.type & ${TYPE.FUSION | TYPE.SYNCHRO | TYPE.XYZ | TYPE.LINK}) != 0`);
+      }
+    }
+
+    let orderBy = 'd.atk DESC, d.level DESC, t.name ASC';
+    if (filters?.sort === 'def') orderBy = 'd.def DESC, d.atk DESC';
+    else if (filters?.sort === 'level') orderBy = '(d.level & 255) DESC, d.atk DESC';
+    else if (filters?.sort === 'name') orderBy = 't.name ASC';
+
+    params.push(limit);
+
     const query = `
       SELECT d.id, d.ot, d.alias, d.setcode, d.type, d.atk, d.def, d.level, d.race, d.attribute, d.category,
              t.name, t.desc
       FROM datas d
       JOIN texts t ON d.id = t.id
-      WHERE (t.name LIKE ? OR t.desc LIKE ? OR CAST(d.id AS TEXT) LIKE ?)
+      WHERE ${whereClauses.join(' AND ')}
+      ORDER BY ${orderBy}
       LIMIT ?
     `;
-    const res = this.db.exec(query, [k, k, k, limit]);
+    const res = this.db.exec(query, params);
     if (!res || res.length === 0) return [];
     return res[0].values.map((row) => ({
       id: Number(row[0]),
@@ -197,7 +278,7 @@ export class CardDatabase {
       type: Number(row[4]),
       atk: Number(row[5]),
       def: Number(row[6]),
-      level: Number(row[7]),
+      level: Number(row[7]) & 0xff,
       race: Number(row[8]),
       attribute: Number(row[9]),
       category: Number(row[10]),

@@ -2,7 +2,10 @@ import * as THREE from 'three';
 import { TYPE } from '../engine/constants';
 import { type CardData, getCardTypeInfo, RACE_NAMES } from '../engine/card-database';
 
-let cachedBackTexture: THREE.Texture | null = null;
+import { customAssets } from '../ui/custom-assets';
+
+let cachedBackCanvas: HTMLCanvasElement | null = null;
+let cachedBackTexture: THREE.CanvasTexture | null = null;
 const imageCache = new Map<string, HTMLImageElement>();
 
 function getImage(url: string): HTMLImageElement {
@@ -16,24 +19,233 @@ function getImage(url: string): HTMLImageElement {
   return img;
 }
 
-/**
- * Loads and returns the authentic Master Duel card back (DefaultProtector.png).
- */
-export function getCardBackTexture(): THREE.Texture {
-  if (cachedBackTexture) return cachedBackTexture;
-  const loader = new THREE.TextureLoader();
-  cachedBackTexture = loader.load(
-    '/texture/DefaultProtector.png',
-    () => {
-      if (cachedBackTexture) cachedBackTexture.needsUpdate = true;
-    },
-    undefined,
-    () => {
-      // Fallback if network or file missing
-      console.warn('Failed to load Master Duel DefaultProtector.png, using procedural back');
+export interface ProtectorSleeveOption {
+  id: string;
+  label: string;
+  thumbType: 'texture' | 'classic' | 'theme' | 'card';
+  thumbUrl?: string;
+  themeColor?: string;
+}
+
+export const PROTECTOR_SLEEVE_OPTIONS: ProtectorSleeveOption[] = [
+  { id: 'DefaultProtector.png', label: 'Master Duel Default', thumbType: 'texture', thumbUrl: '/texture/DefaultProtector.png' },
+  { id: 'classic', label: 'Yu-Gi-Oh! Classic', thumbType: 'classic' },
+  { id: 'sleeve_gold', label: 'Millennium Gold', thumbType: 'theme', themeColor: 'linear-gradient(135deg, #ffd700, #5c4004, #d4af37)' },
+  { id: 'sleeve_blue', label: 'Obelisk Royal Blue', thumbType: 'theme', themeColor: 'linear-gradient(135deg, #00d4ff, #061c4c, #1e88e5)' },
+  { id: 'sleeve_red', label: 'Slifer Crimson', thumbType: 'theme', themeColor: 'linear-gradient(135deg, #ff3355, #4a0612, #d50000)' },
+  { id: 'sleeve_cyber', label: 'Link VRAINS Cyber', thumbType: 'theme', themeColor: 'linear-gradient(135deg, #00ffcc, #04222c, #0088aa)' },
+  { id: 'sleeve_dark', label: 'Shadow Abyss', thumbType: 'theme', themeColor: 'linear-gradient(135deg, #b388ff, #1a0633, #6200ea)' },
+  { id: 'sleeve_synchro', label: 'Stardust Silver', thumbType: 'theme', themeColor: 'linear-gradient(135deg, #ffffff, #37474f, #90a4ae)' },
+  { id: 'sleeve_card_89631139', label: 'Blue-Eyes White Dragon', thumbType: 'card', thumbUrl: '/pics/89631139.jpg' },
+  { id: 'sleeve_card_46986414', label: 'Dark Magician', thumbType: 'card', thumbUrl: '/pics/46986414.jpg' },
+  { id: 'sleeve_card_92731385', label: 'Tearlaments Kitkallos', thumbType: 'card', thumbUrl: '/pics/92731385.jpg' },
+  { id: 'sleeve_card_86066372', label: 'Accesscode Talker', thumbType: 'card', thumbUrl: '/pics/86066372.jpg' },
+  { id: 'sleeve_card_48626373', label: 'Kashtira Arise-Heart', thumbType: 'card', thumbUrl: '/pics/48626373.jpg' },
+  { id: 'sleeve_card_90448279', label: 'Divine Arsenal AA-ZEUS', thumbType: 'card', thumbUrl: '/pics/90448279.jpg' },
+  { id: 'sleeve_card_14558127', label: 'Ash Blossom', thumbType: 'card', thumbUrl: '/pics/14558127.jpg' },
+  { id: 'sleeve_card_84815190', label: 'Baronne de Fleur', thumbType: 'card', thumbUrl: '/pics/84815190.jpg' },
+  { id: 'sleeve_card_68468459', label: 'Fallen of Albaz', thumbType: 'card', thumbUrl: '/pics/68468459.jpg' },
+  { id: 'sleeve_card_29301450', label: 'S:P Little Knight', thumbType: 'card', thumbUrl: '/pics/29301450.jpg' },
+];
+
+function drawClassicYgoBack(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  const borderGrad = ctx.createLinearGradient(0, 0, w, h);
+  borderGrad.addColorStop(0, '#6e3a1a');
+  borderGrad.addColorStop(0.5, '#a86434');
+  borderGrad.addColorStop(1, '#4a220c');
+  ctx.fillStyle = borderGrad;
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.strokeStyle = '#d49b56';
+  ctx.lineWidth = 10;
+  ctx.strokeRect(20, 20, w - 40, h - 40);
+
+  const radGrad = ctx.createRadialGradient(w / 2, h / 2, 10, w / 2, h / 2, w * 0.65);
+  radGrad.addColorStop(0, '#ff8822');
+  radGrad.addColorStop(0.35, '#8a2be2');
+  radGrad.addColorStop(0.7, '#32101e');
+  radGrad.addColorStop(1, '#12050a');
+  ctx.fillStyle = radGrad;
+  ctx.fillRect(28, 28, w - 56, h - 56);
+
+  ctx.save();
+  ctx.translate(w / 2, h / 2);
+  ctx.scale(1, 1.45);
+  for (let r = 135; r > 15; r -= 18) {
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.strokeStyle = r % 36 === 0 ? 'rgba(255, 170, 70, 0.55)' : 'rgba(20, 5, 10, 0.75)';
+    ctx.lineWidth = 9;
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.arc(0, 0, 48, 0, Math.PI * 2);
+  ctx.fillStyle = '#080205';
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawSleeveMetallicFrame(ctx: CanvasRenderingContext2D, w: number, h: number, rimColor = '#d4af37') {
+  // Outer metallic sleeve border
+  ctx.strokeStyle = rimColor;
+  ctx.lineWidth = 18;
+  ctx.strokeRect(9, 9, w - 18, h - 18);
+
+  // Inner holographic hairline
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(22, 22, w - 44, h - 44);
+
+  // Corner foil triangles
+  const cSize = 36;
+  ctx.fillStyle = rimColor;
+  // Top-left
+  ctx.beginPath();
+  ctx.moveTo(18, 18);
+  ctx.lineTo(18 + cSize, 18);
+  ctx.lineTo(18, 18 + cSize);
+  ctx.closePath();
+  ctx.fill();
+  // Top-right
+  ctx.beginPath();
+  ctx.moveTo(w - 18, 18);
+  ctx.lineTo(w - 18 - cSize, 18);
+  ctx.lineTo(w - 18, 18 + cSize);
+  ctx.closePath();
+  ctx.fill();
+  // Bottom-left
+  ctx.beginPath();
+  ctx.moveTo(18, h - 18);
+  ctx.lineTo(18 + cSize, h - 18);
+  ctx.lineTo(18, h - 18 - cSize);
+  ctx.closePath();
+  ctx.fill();
+  // Bottom-right
+  ctx.beginPath();
+  ctx.moveTo(w - 18, h - 18);
+  ctx.lineTo(w - 18 - cSize, h - 18);
+  ctx.lineTo(w - 18, h - 18 - cSize);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawThemedSleeve(ctx: CanvasRenderingContext2D, w: number, h: number, themeId: string) {
+  const palettes: Record<string, { c1: string; c2: string; c3: string; rim: string }> = {
+    sleeve_gold: { c1: '#ffd740', c2: '#5c4004', c3: '#181002', rim: '#ffd700' },
+    sleeve_blue: { c1: '#00e5ff', c2: '#082868', c3: '#030b20', rim: '#40c4ff' },
+    sleeve_red: { c1: '#ff4081', c2: '#68081c', c3: '#1e0208', rim: '#ff5252' },
+    sleeve_cyber: { c1: '#00ffc8', c2: '#043844', c3: '#021218', rim: '#00e5ff' },
+    sleeve_dark: { c1: '#b388ff', c2: '#2e0854', c3: '#0c0218', rim: '#d580ff' },
+    sleeve_synchro: { c1: '#ffffff', c2: '#546e7a', c3: '#162026', rim: '#e0f7fa' },
+  };
+  const pal = palettes[themeId] ?? palettes.sleeve_gold;
+
+  const rad = ctx.createRadialGradient(w / 2, h / 2, 12, w / 2, h / 2, h * 0.62);
+  rad.addColorStop(0, pal.c1);
+  rad.addColorStop(0.45, pal.c2);
+  rad.addColorStop(1, pal.c3);
+  ctx.fillStyle = rad;
+  ctx.fillRect(0, 0, w, h);
+
+  // Geometric crest in center
+  ctx.save();
+  ctx.translate(w / 2, h / 2);
+  for (let i = 0; i < 8; i++) {
+    ctx.rotate(Math.PI / 4);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(-95, -95, 190, 190);
+  }
+  ctx.beginPath();
+  ctx.arc(0, 0, 56, 0, Math.PI * 2);
+  ctx.strokeStyle = pal.rim;
+  ctx.lineWidth = 6;
+  ctx.stroke();
+  ctx.restore();
+
+  drawSleeveMetallicFrame(ctx, w, h, pal.rim);
+}
+
+export function setCardBackSource(source = 'DefaultProtector.png') {
+  const tex = getCardBackTexture();
+  const canvas = cachedBackCanvas!;
+  const ctx = canvas.getContext('2d')!;
+  const w = canvas.width;
+  const h = canvas.height;
+
+  if (source === 'classic') {
+    drawClassicYgoBack(ctx, w, h);
+    tex.needsUpdate = true;
+    return;
+  }
+
+  if (source.startsWith('sleeve_') && !source.startsWith('sleeve_card_')) {
+    drawThemedSleeve(ctx, w, h, source);
+    tex.needsUpdate = true;
+    return;
+  }
+
+  let url = '/texture/DefaultProtector.png';
+  let isCardArtSleeve = false;
+
+  if (source === 'custom_protector') {
+    url = customAssets.getUrl('custom_protector') || '/texture/DefaultProtector.png';
+    isCardArtSleeve = true;
+  } else if (source.startsWith('sleeve_card_')) {
+    const cardCode = source.replace('sleeve_card_', '');
+    url = `/pics/${cardCode}.jpg`;
+    isCardArtSleeve = true;
+  } else if (source && source !== 'DefaultProtector.png') {
+    // If legacy profile had WallPaperIcon*, fallback cleanly to DefaultProtector.png
+    if (source.startsWith('WallPaperIcon')) {
+      url = '/texture/DefaultProtector.png';
+    } else {
+      url =
+        source.startsWith('/') || source.startsWith('data:') || source.startsWith('blob:')
+          ? source
+          : `/texture/${source}`;
     }
-  );
+  }
+
+  const img = getImage(url);
+  const paint = () => {
+    if (img.complete && img.naturalWidth > 0) {
+      ctx.fillStyle = '#080c14';
+      ctx.fillRect(0, 0, w, h);
+      if (isCardArtSleeve) {
+        // Draw card art inside metallic protector sleeve border
+        ctx.drawImage(img, 18, 18, w - 36, h - 36);
+        drawSleeveMetallicFrame(ctx, w, h, '#d4af37');
+      } else {
+        ctx.drawImage(img, 0, 0, w, h);
+      }
+      tex.needsUpdate = true;
+    } else {
+      drawClassicYgoBack(ctx, w, h);
+      tex.needsUpdate = true;
+    }
+  };
+
+  if (img.complete && img.naturalWidth > 0) {
+    paint();
+  } else {
+    drawClassicYgoBack(ctx, w, h);
+    tex.needsUpdate = true;
+    img.addEventListener('load', paint, { once: true });
+  }
+}
+
+/**
+ * Returns the shared dynamic card back texture (updated via setCardBackSource).
+ */
+export function getCardBackTexture(): THREE.CanvasTexture {
+  if (cachedBackTexture) return cachedBackTexture;
+  cachedBackCanvas = document.createElement('canvas');
+  cachedBackCanvas.width = 512;
+  cachedBackCanvas.height = 744;
+  cachedBackTexture = new THREE.CanvasTexture(cachedBackCanvas);
   cachedBackTexture.colorSpace = THREE.SRGBColorSpace;
+  setCardBackSource('DefaultProtector.png');
   return cachedBackTexture;
 }
 

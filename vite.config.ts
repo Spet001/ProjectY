@@ -6,8 +6,8 @@ export default defineConfig({
   plugins: [artProxyPlugin()],
   resolve: {
     alias: {
-      buffer: path.resolve(__dirname, 'src/buffer-shim.ts'),
-      jszip: path.resolve(__dirname, 'src/jszip-shim.ts'),
+      buffer: path.resolve(import.meta.dirname, 'src/buffer-shim.ts'),
+      jszip: path.resolve(import.meta.dirname, 'src/jszip-shim.ts'),
     },
   },
   define: {

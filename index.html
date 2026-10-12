@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MDPro Web - Master Duel Three.js</title>
+    <title>Yu-Gi-Oh! Master Duel Web</title>
     <link rel="stylesheet" href="/src/style.css" />
     <script>
       window.addEventListener('error', function(e) {
@@ -25,8 +25,8 @@
       <!-- 1. Main Menu Screen -->
       <div id="main-menu-container"></div>
 
-      <!-- 2. Deck Editor Modal Host -->
-      <div id="deck-editor-container"></div>
+      <!-- 2. Deck Editor Screen (Deck Selection + 3-Column Editor) -->
+      <div id="deck-editor-container" class="hidden"></div>
 
       <!-- 3. 3D Duel Screen -->
       <div id="duel-container" class="hidden">
@@ -36,47 +36,82 @@
         <!-- 3D Card Direct Floating Action Popover -->
         <div id="card-action-popover" class="card-action-popover hidden"></div>
 
-        <!-- Interactive Card Selection Modal (For MSG_SELECT_CARD, etc.) -->
+        <!-- Extra Deck Floating "Special Summon" Button -->
+        <div id="extra-deck-action-popover" class="card-action-popover hidden"></div>
+
+        <!-- Right-Side Extra Deck / Graveyard Preview Drawer -->
+        <aside id="extra-deck-drawer" class="md-extra-deck-drawer hidden">
+          <div class="md-extra-drawer-header">
+            <span id="extra-drawer-title">Extra Deck (15)</span>
+            <button id="btn-close-extra-drawer" class="md-drawer-close-btn">✕</button>
+          </div>
+          <div id="extra-drawer-list" class="md-extra-drawer-list"></div>
+        </aside>
+
+        <!-- Chain Formation & Resolution Visual Overlay -->
+        <div id="chain-overlay" class="md-chain-overlay hidden"></div>
+
+        <!-- Card Movement Visual Feed (Field->GY, Deck->GY, Extra->GY, GY->Banish, GY->Field, etc.) -->
+        <div id="card-move-feed" class="md-card-move-feed"></div>
+
+        <!-- Top-Center Zone Selection Banner -->
+        <div id="zone-select-banner" class="md-zone-select-banner hidden">
+          <div class="md-zone-banner-box">
+            <span id="zone-select-text">Select the card position on the field.</span>
+          </div>
+        </div>
+
+        <!-- Multi-Effect Tabbed Selection Modal -->
+        <div id="multi-effect-modal" class="md-multi-effect-modal hidden">
+          <div class="md-multi-effect-header" id="multi-effect-title">
+            Which effect do you want to use?
+          </div>
+          <div class="md-multi-effect-tabs" id="multi-effect-tabs"></div>
+          <div class="md-multi-effect-body" id="multi-effect-desc"></div>
+          <div class="md-multi-effect-footer">
+            <button class="md-btn-cancel" id="btn-multi-effect-cancel">Cancel</button>
+            <button class="md-btn-ok" id="btn-multi-effect-ok">OK</button>
+          </div>
+        </div>
+
+        <!-- Battle Position Circular Overlay -->
+        <div id="battle-pos-modal" class="md-battle-pos-overlay hidden">
+          <div class="md-battle-pos-header">Select Battle Position</div>
+          <div class="md-battle-pos-buttons" id="battle-pos-buttons"></div>
+        </div>
+
+        <!-- Bottom-Center Master Duel Card Selection / Optional Effect Drawer -->
         <div id="card-select-modal" class="card-select-modal hidden">
-          <div class="modal-header">
-            <h3 id="card-select-title">Select Card(s)</h3>
-            <span id="card-select-count" class="deck-count-badge valid">0 Selected</span>
+          <div class="md-drawer-top-bar">
+            <div class="md-drawer-loc-tabs" id="card-select-loc-tabs">
+              <span class="md-loc-tab" data-loc="1">DECK</span>
+              <span class="md-loc-tab" data-loc="64">EXTRA</span>
+              <span class="md-loc-tab" data-loc="16">GY</span>
+              <span class="md-loc-tab" data-loc="12">FIELD</span>
+              <span class="md-loc-tab" data-loc="2">HAND</span>
+            </div>
+            <div class="md-drawer-title-wrap">
+              <h3 id="card-select-title">Select an Optional Effect</h3>
+              <span id="card-select-count" class="deck-count-badge valid">0 Selected</span>
+            </div>
+            <button class="md-drawer-minimize-btn" id="btn-minimize-select-modal" title="View Field">👁 Field</button>
           </div>
           <div class="select-cards-container" id="card-select-list"></div>
-          <div class="custom-actions-bar" style="margin-top: 8px;">
-            <button class="btn btn-secondary" id="btn-cancel-card-select" style="display: none; margin-right: 10px;">Cancel</button>
-            <button class="btn btn-primary" id="btn-confirm-card-select">Confirm</button>
+          <div class="md-drawer-bottom-bar">
+            <button class="md-btn-cancel" id="btn-cancel-card-select" style="display: none;">Cancel</button>
+            <button class="md-btn-confirm" id="btn-confirm-card-select">Select</button>
           </div>
         </div>
 
         <!-- Master Duel HUD Overlay -->
         <div class="ui-overlay">
-          <!-- Top Left: FPS & Card Inspector -->
+          <!-- Top Left: FPS & Left Card Inspector -->
           <div class="hud-top-left">
             <div class="fps-counter" id="duel-fps">60</div>
-            <aside class="card-inspector" id="card-inspector">
-              <div class="card-inspector-header">
-                <div class="card-img-wrap">
-                  <img id="inspect-img" src="/pics/89631139.jpg" alt="Card Art" />
-                </div>
-                <div class="card-header-info">
-                  <div class="card-title" id="inspect-name">Blue-Eyes White Dragon</div>
-                  <div class="card-meta-row" id="inspect-meta-row">
-                    <span class="meta-attr-tag" id="inspect-attr">LIGHT</span>
-                    <span class="meta-level-tag" id="inspect-level">★ 8</span>
-                  </div>
-                  <div class="card-stats-row" id="inspect-stats">
-                    <span class="stat-atk">ATK <strong id="inspect-atk">3000</strong></span>
-                    <span class="stat-def">DEF <strong id="inspect-def">2500</strong></span>
-                  </div>
-                </div>
-              </div>
-              <div class="card-type-bar" id="inspect-type-bar">【Dragon / Normal】</div>
-              <div class="card-desc" id="inspect-desc">This legendary dragon is a powerful engine of destruction.</div>
-            </aside>
+            <aside class="card-inspector" id="card-inspector"></aside>
           </div>
 
-          <!-- Top Right: Opponent LP (Red/Trapezoid) -->
+          <!-- Top Right: Opponent LP -->
           <div class="hud-top-right">
             <div class="player-card p1">
               <div class="player-info">
@@ -93,36 +128,36 @@
             </div>
           </div>
 
-          <!-- Center-Right: Authentic Phase Orb & Phase Buttons -->
+          <!-- Center-Right: Phase Orb & Phase Buttons -->
           <div class="phase-orb-container" id="phase-orb-container">
             <div class="phase-orb" id="phase-orb">
               <span class="orb-turn" id="turn-badge">Turn 1</span>
               <span class="orb-phase" id="phase-name">Main 1</span>
             </div>
             <div class="phase-step-buttons" id="phase-step-buttons">
-              <button class="phase-action-btn battle hidden" id="btn-to-bp" title="Proceed to Battle Phase">
+              <button class="phase-action-btn battle hidden" id="btn-to-bp" title="Battle Phase">
                 <img src="/texture/GUI_PhaseBP.png" alt="Battle" />
                 <span>Battle</span>
               </button>
-              <button class="phase-action-btn main2 hidden" id="btn-to-m2" title="Proceed to Main Phase 2">
+              <button class="phase-action-btn main2 hidden" id="btn-to-m2" title="Main Phase 2">
                 <img src="/texture/GUI_PhaseMP2.png" alt="Main 2" />
                 <span>Main 2</span>
               </button>
-              <button class="phase-action-btn end hidden" id="btn-to-ep" title="End Turn">
+              <button class="phase-action-btn end hidden" id="btn-to-ep" title="End Phase">
                 <img src="/texture/GUI_PhaseEP.png" alt="End Turn" />
                 <span>End</span>
               </button>
             </div>
           </div>
 
-          <!-- Bottom Left: Player LP (Blue/Trapezoid) -->
+          <!-- Bottom Left: Player LP -->
           <div class="hud-bottom-left">
             <div class="player-card p0">
               <div class="avatar-wrap p0-avatar">
                 <img id="p0-avatar-img" src="/icon/ProfileIcon1010002_L.png" alt="Player" class="player-avatar" />
               </div>
               <div class="player-info">
-                <span class="player-name" id="p0-name">Seto Kaiba</span>
+                <span class="player-name" id="p0-name">Duelist</span>
                 <div class="player-lp-row">
                   <span class="lp-label">LP</span>
                   <span class="player-lp" id="p0-lp">8000</span>
@@ -134,7 +169,6 @@
 
           <!-- Bottom Right: Circular HUD Controls -->
           <div class="hud-bottom-right">
-            <!-- Collapsible Live Duel Event Log -->
             <div class="log-drawer hidden" id="log-drawer">
               <div class="log-entry">=== DUEL COMMENCED ===</div>
             </div>
@@ -157,10 +191,23 @@
             </div>
           </div>
 
-          <!-- Choice Prompt Modal (For Effect Yes/No, Battle Position, Zone placement, Chains) -->
+          <!-- Choice Prompt Modal (Fallback / Sort / YesNo) -->
           <div class="prompt-modal hidden" id="prompt-modal">
-            <div class="prompt-title" id="prompt-title">Select Action</div>
+            <div class="prompt-title" id="prompt-title">Select an Action</div>
             <div class="prompt-options" id="prompt-options"></div>
+          </div>
+
+          <!-- End of Duel Result Overlay (Victory / Defeat / Draw) -->
+          <div id="duel-result-overlay" class="md-duel-result-overlay hidden">
+            <div class="md-duel-result-box" id="duel-result-box">
+              <div class="md-duel-result-badge" id="duel-result-badge">VICTORY</div>
+              <div class="md-duel-result-winner" id="duel-result-winner">You Won the Duel!</div>
+              <div class="md-duel-result-reason" id="duel-result-reason">Opponent's LP reached 0</div>
+              <div class="md-duel-result-actions">
+                <button class="btn btn-primary btn-large" id="btn-duel-rematch">⚔ Rematch</button>
+                <button class="btn btn-secondary btn-large" id="btn-duel-back-menu">🏠 Return to Main Menu</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

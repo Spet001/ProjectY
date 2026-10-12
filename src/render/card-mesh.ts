@@ -236,10 +236,24 @@ export class CardMesh {
     }
   }
 
+  private faceHidden = false;
+
+  isFaceHidden(): boolean {
+    return this.faceHidden;
+  }
+
   updateFrontTexture(cardData: CardData | null, code: number) {
     this.code = code;
     this.cardData = cardData;
-    const newTex = createCardFrontTexture(cardData, code);
+    const newTex = this.faceHidden ? getCardBackTexture() : createCardFrontTexture(cardData, code);
+    (this.frontMesh.material as THREE.MeshStandardMaterial).map = newTex;
+    (this.frontMesh.material as THREE.MeshStandardMaterial).needsUpdate = true;
+  }
+
+  setFaceHidden(hidden: boolean) {
+    if (this.faceHidden === hidden) return;
+    this.faceHidden = hidden;
+    const newTex = hidden ? getCardBackTexture() : createCardFrontTexture(this.cardData, this.code);
     (this.frontMesh.material as THREE.MeshStandardMaterial).map = newTex;
     (this.frontMesh.material as THREE.MeshStandardMaterial).needsUpdate = true;
   }
